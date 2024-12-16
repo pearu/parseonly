@@ -622,7 +622,6 @@ def sequence(*args):
 
   @splitter
   def sequence_split(cls, ctx, line):
-    print(f'{line=}')
     rest = line
     lst = []
     for i, spec in enumerate(_spec_iter(cls._grammar_specs)):

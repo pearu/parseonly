@@ -37,6 +37,14 @@ class do_not_replace(grammar('do_not_replace')):
     https://timsong-cpp.github.io/cppwp/cpp#rescan-3
   """
   format = '{0}'
+
+class comment_label(grammar('comment_label')):
+  @splitter
+  def split(cls, ctx, line):
+    if line.startswith('@@@'):
+      i = line.find('@@@', 3)
+      if i != -1:
+        return cls(line[:i+3]), line[i+3:]
   
 class header_name(grammar('header_name', ['lquote', 'char-sequence', 'rquote'])):
   """
@@ -186,6 +194,12 @@ class pp_import(grammar('pp_import', ['export', 'header-name-opt-tokens', 'pp-to
     print(f"TODO: evaluate {type(self).__name__}: {repr(str(self))}")
     return self
 
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
 class replacement_list(grammar('replacement_list', ['pp_tokens'])):
   """
   pp-tokens?
@@ -195,7 +209,7 @@ class replacement_list(grammar('replacement_list', ['pp_tokens'])):
     t, rest = pp_tokens.split(ctx, line)
     if t:
       return cls(t), rest  # no lstrip!
-    return cls(None), line
+    return cls(pp_tokens(())), line
 
 class sharp_include(grammar('sharp_include', ['pp_tokens'])):
   """
@@ -219,10 +233,24 @@ class sharp_include(grammar('sharp_include', ['pp_tokens'])):
 
   def evaluate(self, ctx):
     content = ctx.apply_defines(self[0])
-    if content is self[0]:
-      return self
-    return self._replace(pp_tokens=content)
 
+    if 0:
+      print(f'Warning: include `{content}` not evaluated')
+
+    return self._replace(pp_tokens=content).resolve(True)
+
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
 
 class sharp_define_identifier(grammar('sharp_define_identifier', ['identifier', 'replacement-list'])):
   """
@@ -261,7 +289,21 @@ class sharp_define_identifier(grammar('sharp_define_identifier', ['identifier', 
     ctx.register_define(self.identifier, None, pp_tokens)
     # Since this macro definition is registered, we'll remove the
     # directive. Notice that this preserves the newline count.
-    return text_line('')
+    return self.resolve(False)
+
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
 
 class tripledot(grammar('tripledot')):
   @splitter
@@ -338,12 +380,27 @@ class sharp_define_macro(grammar('sharp_define_macro', ['identifier', 'identifie
       args.append(pp_identifier('__VA_ARGS__'))
     # args is list because in apply_defines we'll use args.find(...)
 
-    ctx.register_define(self.identifier, args, self.replacement_list.pp_tokens.pp_tokens)
-
+    if self.replacement_list.pp_tokens:
+      ctx.register_define(self.identifier, args, self.replacement_list.pp_tokens.pp_tokens)
+    else:
+      print(f'FAILED TO REGISTER: {self=}')
     # Since this macro definition is registered, we'll remove the
     # directive. Notice that this preserves the newline count.
-    return text_line('')
+    return self.resolve(False)
 
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
 
 class sharp_undef(grammar('sharp_undef')):
   """
@@ -369,7 +426,21 @@ class sharp_undef(grammar('sharp_undef')):
     # Macros content cannot be evaluated until these are materialized.
     # We can only register/unregister macros.
     ctx.unregister_define(self.content)
-    return text_line('')
+    return self.resolve(False)
+
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
 
 class sharp_line(grammar('sharp_line')):
   """
@@ -394,6 +465,20 @@ class sharp_line(grammar('sharp_line')):
     print(f"TODO: evaluate {type(self).__name__}: {repr(str(self))}")
     return self
 
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
+
 class sharp_error(grammar('sharp_error')):
   """
 # error    pp-tokens? new-line
@@ -417,7 +502,21 @@ class sharp_error(grammar('sharp_error')):
   def evaluate(self, ctx):
     print(f"TODO: evaluate {type(self).__name__}: {repr(str(self))}")
     return self
-      
+
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
+
 class sharp_warning(grammar('sharp_warning')):
   """
 # warning    pp-tokens? new-line
@@ -441,6 +540,20 @@ class sharp_warning(grammar('sharp_warning')):
   def evaluate(self, ctx):
     print(f"TODO: evaluate {type(self).__name__}: {repr(str(self))}")
     return self
+
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
 
 class sharp_pragma(grammar('sharp_pragma')):
   """
@@ -466,6 +579,20 @@ class sharp_pragma(grammar('sharp_pragma')):
     print(f"TODO: evaluate {type(self).__name__}: {repr(str(self))}")
     return self
 
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
+
 class sharp_newline(grammar('sharp_newline')):
   """
 # new-line
@@ -476,6 +603,20 @@ class sharp_newline(grammar('sharp_newline')):
     rest = line.lstrip(ctx.whitespace_characters)
     if rest.startswith('#\n'):
       return cls(''), rest[2:]
+
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
 
 class control_line(switch(pp_import, sharp_include, sharp_define_macro, sharp_define_identifier, sharp_undef, sharp_line, sharp_error, sharp_warning, sharp_pragma, sharp_newline)):
   """
@@ -492,16 +633,42 @@ pp-import
 # pragma  pp-tokens? new-line
 # new-line
   """
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
 
 def _if_group_split(cls, kinds, ctx, line):
-  rest = line.lstrip(ctx.whitespace_characters)
+  rest = line#.lstrip(ctx.whitespace_characters)
   if rest.startswith('#'):
-    kind, rest = word.split(ctx, rest[1:].lstrip(ctx.whitespace_characters), require=kinds)
+    kind, rest = word.split(ctx, rest[1:], require=kinds)
     if kind:
       if kind in ['if', 'elif']:
         i = rest.find('\n')
         if i != -1:
           raw = rest[:i]
+
+          k = raw.rfind('@@@')
+          label = None
+          if k != -1 and raw[k+3:].strip() == '':
+            n = raw.rfind('@@@', 0, k-1)
+            if n != -1:
+              label = raw[n:k+3]
+              raw = raw[:n].rstrip()
+              print(f'{label=}')
+            else:
+              assert 0, raw[-100:]  # unreachable
+
+          
           rest = rest[i+1:].lstrip(ctx.whitespace_characters)
 
           # rewrite `#if defined FOO` as `#if defined(FOO)`
@@ -514,28 +681,28 @@ def _if_group_split(cls, kinds, ctx, line):
           if e:
             if rest_ == '':
               g, rest = group.split(ctx, rest)
-              return cls(kind, e, g), rest
+              return cls(kind, e, label, g), rest
             assert rest_ == '', rest_
         assert 0, line
       else:
         e, rest = identifier.split(ctx, rest)
+        label, rest = comment_label.split(ctx, rest)
         if e and rest.startswith('\n'):
           with ctx.increase_cpp_depth():
             g, rest = group.split(ctx, rest[1:])
-            return cls(kind, e, g), rest
+            return cls(kind, e, label, g), rest
         assert 0, line
   
-class if_group(grammar('if_group', ['kind', 'expression', 'group'])):
+class if_group(grammar('if_group', ['kind', 'expression', 'comment-label', 'group'])):
   """
-# if      constant-expression new-line group?
-# ifdef   identifier          new-line group?
-# ifndef  identifier          new-line group?
+# if      constant-expression comment-label? new-line group?
+# ifdef   identifier          comment-label? new-line group?
+# ifndef  identifier          comment-label? new-line group?
   """
   @property
   def format(self):
       tab = '\t' * self._attributes.get('cpp_depth', 0)
-      return f'#{tab}{{0}} {{1}}\n{{2}}'
-
+      return f'#{tab}{{0}} {{1}}\n{{3}}'
 
   @splitter
   @splitter_set_cpp_depth
@@ -544,6 +711,7 @@ class if_group(grammar('if_group', ['kind', 'expression', 'group'])):
 
   @classmethod
   def postprocess(cls, ctx, item, rest):
+
     if isinstance(item, cls):
       if item.kind == 'ifdef':
         # rewrite `#ifdef i` as `#if defined(i)`
@@ -555,28 +723,41 @@ class if_group(grammar('if_group', ['kind', 'expression', 'group'])):
         expr = None
       if expr is not None:
         item = item._replace(kind='if', expression=expr)
+
     return item, rest
 
   @property
   def is_invalid(self):
-    if self.kind == 'if' and isinstance(self.expression, int) and self.expression == 0:
+    if self.kind == 'if' and isinstance(self.expression, (int, bool)) and self.expression == 0:
       return True
 
   @property
   def is_valid(self):
-    if self.kind == 'if' and isinstance(self.expression, int) and self.expression != 0:
+    if self.kind == 'if' and isinstance(self.expression, (int, bool)) and self.expression != 0:
       return True
 
-class elif_group(grammar('elif_group', ['kind', 'expression', 'group'])):
+  def evaluate(self, ctx):
+    assert self.kind == 'if'
+    v = self.expression
+    if isinstance(v, Grammar):
+      v = v.evaluate(ctx)
+    return self._replace(expression=v).resolve(v)
+
+  def resolve(self, enable):
+    if isinstance(enable, (bool, int)):
+      return group((text_line(''), (self.group and self.group.resolve(enable)) or None))
+    return self
+
+class elif_group(grammar('elif_group', ['kind', 'expression', 'comment-label', 'group'])):
   """
-# elif      constant-expression new-line group?
-# elifdef   identifier          new-line group?
-# elifndef  identifier          new-line group?
+# elif      constant-expression comment-label? new-line group?
+# elifdef   identifier          comment-label? new-line group?
+# elifndef  identifier          comment-label? new-line group?
   """
   @property
   def format(self):
       tab = '\t' * self._attributes.get('cpp_depth', 0)
-      return f'#{tab}' + '{0} {1}\n{2}'
+      return f'#{tab}' + '{0} {1}\n{3}'
   @splitter
   @splitter_set_cpp_depth
   def split(cls, ctx, line):
@@ -599,14 +780,27 @@ class elif_group(grammar('elif_group', ['kind', 'expression', 'group'])):
 
   @property
   def is_invalid(self):
-    if self.kind == 'elif' and isinstance(self.expression, int) and self.expression == 0:
+    if self.kind == 'elif' and isinstance(self.expression, (int, bool)) and self.expression == 0:
       return True
 
   @property
   def is_valid(self):
-    if self.kind == 'elif' and isinstance(self.expression, int) and self.expression != 0:
+    if self.kind == 'elif' and isinstance(self.expression, (int, bool)) and self.expression != 0:
       return True
 
+  def evaluate(self, ctx):
+    assert self.kind == 'elif'
+    v = self.expression
+    if isinstance(v, Grammar):
+      v = v.evaluate(ctx)
+    return self._replace(expression=v).resolve(v)
+
+  def resolve(self, enable):
+    if isinstance(enable, (bool, int)):
+      return group((text_line(''), self.group.resolve(enable)))
+    return self
+
+  
 class elif_groups(item_sequence('elif_groups', elif_group)):
   """
   elif-group
@@ -635,41 +829,76 @@ class elif_groups(item_sequence('elif_groups', elif_group)):
     else:
       return False
 
-class else_group(grammar('else_group')):
+  def resolve(self, enable):
+    return type(self)(tuple(item.resolve(enable) for item in self.content))
+
+  
+class else_group(grammar('else_group', ['comment-label', 'group'])):
   """
-# else    new-line group?
+# else comment-label?  new-line group?
   """
   @property
   def format(self):
       tab = '\t' * self._attributes.get('cpp_depth', 0)
-      return f'#{tab}' + 'else\n{0}'
+      return f'#{tab}' + 'else\n{1}'
   @splitter
   @splitter_set_cpp_depth
   def split(cls, ctx, line):
     rest = line.lstrip(ctx.whitespace_characters)
     if rest.startswith('#'):
       kind, rest = word.split(ctx, rest[1:].lstrip(ctx.whitespace_characters), require='else')
-      if kind and rest.startswith('\n'):
-        with ctx.increase_cpp_depth():
-          g, rest = group.split(ctx, rest)
-          return cls(g), rest          
+      if kind:
+        label, rest = comment_label.split(ctx, rest)
+        if rest.startswith('\n'):
+          with ctx.increase_cpp_depth():
+            g, rest = group.split(ctx, rest)
+            return cls(label, g), rest  
+
+  def resolve(self, enable):
+    if isinstance(enable, (bool, int)):
+      return group((text_line(''), self.group.resolve(enable)))
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
 
 class endif_line(grammar('endif_line')):
   """
-# endif   new-line
+# endif comment-label?  new-line
   """
   @property
   def format(self):
-      tab = '\t' * self._attributes.get('cpp_depth', 0)
-      return f'#{tab}' + 'endif\n'
+    tab = '\t' * self._attributes.get('cpp_depth', 0)
+    return f'#{tab}' + 'endif\n'
+
   @splitter
   @splitter_set_cpp_depth
   def split(cls, ctx, line):
     rest = line.lstrip(ctx.whitespace_characters)
     if rest.startswith('#'):
       kind, rest = word.split(ctx, rest[1:].lstrip(ctx.whitespace_characters), require='endif')
-      if kind and rest.startswith('\n'):
-        return cls(''), rest[1:]
+      if kind:
+        label, rest = comment_label.split(ctx, rest)
+        if rest.startswith('\n'):
+          return cls(label), rest[1:]
+
+  def resolve(self, enable):
+    if isinstance(enable, (bool, int)):
+      return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
 
 class if_section(grammar('if_section', ['if-group', 'elif-groups', 'else-group', 'endif-line'])):
   """
@@ -687,8 +916,45 @@ class if_section(grammar('if_section', ['if-group', 'elif-groups', 'else-group',
         return cls(ifg, elifg, elseg, endif), rest
 
   def evaluate(self, ctx):
-    print(f"TODO: evaluate {type(self).__name__}: {repr(str(self))}")
-    return self
+    ifg, elifg, elseg, endif = self
+    ifg = ifg.evaluate(ctx)
+    elifg = elifg and elifg.evaluate(ctx)
+    elseg = elseg and elseg.evaluate(ctx)
+    endif = endif.evaluate(ctx)
+    if ifg.is_valid:
+      return self._replace(if_group=ifg.resolve(True),
+                           elif_groups=elifg and elifg.resolve(False),
+                           else_group=elseg and elseg.resolve(False),
+                           endif_line=endif.resolve(False))
+    if ifg.is_invalid:
+      if elifg:
+        if elifg.is_valid:
+          return self._replace(if_group=ifg.resolve(False),
+                           elif_groups=elifg and elifg.resolve(True),
+                           else_group=elseg and elseg.resolve(False),
+                           endif_line=endif.resolve(False))
+        if elifg.is_invalid:
+          if elseg:
+            return self._replace(if_group=ifg.resolve(False),
+                                 elif_groups=elifg and elifg.resolve(False),
+                                 else_group=elseg and elseg.resolve(True),
+                                 endif_line=endif.resolve(False))
+    return self.resolve(True)
+
+  def resolve(self, enable):
+    ifg, elifg, elseg, endif = self
+    return self._replace(if_group=ifg.resolve(enable),
+                         elif_groups=elifg and elifg.resolve(enable),
+                         else_group=elseg and elseg.resolve(enable),
+                         endif_line=endif.resolve(enable))
+
+  @property
+  def is_valid(self):
+    return True
+
+  @property
+  def is_invalid(self):
+    return False
 
 class sharp_conditionally_supported_directive(grammar('sharp_conditionally_supported_directive')):
   """
@@ -720,8 +986,15 @@ class sharp_conditionally_supported_directive(grammar('sharp_conditionally_suppo
     return item, rest
 
   def evaluate(self, ctx):
-    assert 0
+    # TODO: report
     return self
+
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
 
 class text_line(grammar('text_line', ['pp_tokens'])):
   """
@@ -730,11 +1003,12 @@ pp-tokens? new-line
   format = '{0}\n'
   @splitter
   def split(cls, ctx, line):
-    rest = line.lstrip(ctx.whitespace_characters)
+    rest = line #.lstrip(ctx.whitespace_characters)
     if rest.startswith('#'):
       return
     if rest.startswith('\n'):
       return cls(''), rest[1:]
+    #assert 0, line
     t, rest = pp_tokens.split(ctx, rest)
     if rest.startswith('\n'):
       return cls(t), rest[1:]
@@ -742,10 +1016,28 @@ pp-tokens? new-line
   def evaluate(self, ctx):
     if not self[0]:
       return self
+
     content = ctx.apply_defines(self[0])
-    if content is self[0]:
-      return self
+
+    for t in content.pp_tokens:
+      if isinstance(t, pp_identifier):
+        n = t.content
+        if n == n.upper():
+          ctx.unevaluated_macros.add(n)
     return self._replace(pp_tokens=content)
+
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+  @property
+  def is_invalid(self):
+    return False
 
 class group_part(switch('group_part', control_line, if_section, sharp_conditionally_supported_directive, text_line)):
   """
@@ -754,16 +1046,62 @@ class group_part(switch('group_part', control_line, if_section, sharp_conditiona
   text-line
   # conditionally-supported-directive
   """
+  def resolve(self, enable):
+    return self.content.resolve(enable)
 
-  
+
 class group(item_sequence('group', group_part, join_separator='', field='group')):
   """
   group-part
   group group-part
   """
+  @classmethod
+  def postprocess(cls, ctx, item, rest):
+    if item is not None:
+      lst = []
+      flag = False
+      for part in item.group:
+        if lst and isinstance(lst[-1], text_line) and isinstance(part, text_line):
+          tokens = lst[-1].pp_tokens
+          if tokens and isinstance(tokens.pp_tokens[-1], operator_or_punctuator):
+            if tokens.pp_tokens[-1].content==',':
+              flag= True
+              lst.insert(-1, text_line(''))  # to preserve line count
+              lst[-1] = lst[-1]._replace(pp_tokens=pp_tokens(tokens + part.pp_tokens))
 
+              continue
+        lst.append(part)
+      if flag:
+        item = item._replace(group=tuple(lst))
+    return item, rest
 
-  
+  def resolve(self, enable):
+    return type(self)(tuple((item.resolve(enable) if item is not None else item) for item in self.group))
+
+  @property
+  def is_valid(self):
+    for item in self.group:
+      if item is None:
+        return
+      if item.is_valid:
+        continue
+
+      return item.is_valid
+    return True
+
+  @property
+  def is_invalid(self):
+    for item in self.group:
+      if item is None:
+        return
+      if item.is_invalid:
+        return True
+      if item.is_valid:
+        continue
+      return item.is_valid
+    return False
+        
+
 class pp_module(grammar('pp_module', ['export', 'pp-tokens'])):
   """
 
@@ -778,8 +1116,13 @@ class pp_module(grammar('pp_module', ['export', 'pp-tokens'])):
       t, rest = pp_tokens.split(ctx, rest)
       if rest.startswith(';\n'):
         return cls(e, t), rest[2:]
-    
-      
+
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
 class pp_global_module_fragment(grammar('pp_global_module_fragment')):
   """
   module ; new-line group?
@@ -792,6 +1135,11 @@ class pp_global_module_fragment(grammar('pp_global_module_fragment')):
       g, rest = group.split(ctx, rest[2:].lstrip(ctx.whitespace_characters))
       return cls(g), rest
 
+  def resolve(self, enable):
+    if isinstance(enable, (bool, int)):
+      return group((text_line(''), self.group.resolve(enable)))
+    return self
+  
 class pp_private_module_fragment(grammar('pp_private_module_fragment')):
   """
   module : private ; new-line group?
@@ -806,6 +1154,11 @@ class pp_private_module_fragment(grammar('pp_private_module_fragment')):
         g, rest = group.split(ctx, rest[2:].lstrip(ctx.whitespace_characters))
         return cls(g), rest
 
+  def resolve(self, enable):
+    if isinstance(enable, (bool, int)):
+      return group((text_line(''), self.group.resolve(enable)))
+    return self
+
 class module_file(grammar('module_file', ['pp-global-module-fragment', 'pp-module', 'group', 'pp-private-module-fragment'])):
   """
   pp-global-module-fragment? pp-module group? pp-private-module-fragment?
@@ -818,7 +1171,12 @@ class module_file(grammar('module_file', ['pp-global-module-fragment', 'pp-modul
       g, rest = group.split(ctx, rest)
       pf, rest = pp_private_module_fragment.split(ctx, rest)
       return cls(gf, m, g, pf), rest
-
+  def resolve(self, enable):
+    gmf, m, g, pmf = self
+    return self._replace(pp_global_module_fragment=gmf and gmf.resolve(enable),
+                         pp_module=m.resolve(enable),
+                         group=g and g.resolve(enable),
+                         pp_private_module_fragment=pmf and pmf.resolve(enable))
   
 class preprocessing_file(grammar('preprocessing_file')):
   """
@@ -835,8 +1193,9 @@ class preprocessing_file(grammar('preprocessing_file')):
     g, rest = group.split(ctx, line)
     if g:
       return cls(g), rest
+  def resolve(self, enable):
+    return self._replace(content=self.content.resolve(enable))
 
-  
 class CPPContext(Context):
   """Implements CPP macro expansion support.
   """
@@ -846,7 +1205,10 @@ class CPPContext(Context):
         kwargs.update(whitespace=whitespace_without_newline)
     super().__init__(*args, **kwargs)
     self.defines = dict() # pairs (define name, define value)
-
+    self.unevaluated_macros = set()
+    self.smallest_matching_rest_length = 2**63
+    self.smallest_non_matching_rest_length = 2**64
+    
   def unregister_define(self, name):
     if name in self.defines:
       self.defines.pop(name)
@@ -910,7 +1272,7 @@ class CPPContext(Context):
         arg.append(t)
         i += 1
       else:
-        raise RuntimeError(f'no closing rparen found: `{" ".join(map(str, seq[save_i:100]))}`')
+        raise RuntimeError(f'no closing rparen found: `{" ".join(map(str, seq[save_i:500]))}`')
       assert arg is None  # sanity check
 
       return lst, i
@@ -1135,44 +1497,40 @@ class CPPContext(Context):
   def rewrite(self, original, new):
     if isinstance(new, Grammar) and 0:
         new = new.evaluate(self)
-        print(f'{original=} -> {new=}')
+        # print(f'{original=} -> {new=}')
 
-    if isinstance(new, (sharp_define_identifier, sharp_define_macro, sharp_undef, text_line,
-                        sharp_include)):
+    if isinstance(new, (sharp_define_identifier, sharp_define_macro, sharp_undef,
+                        text_line,
+                        sharp_include,
+                        if_group, elif_group,
+                        if_section)):
       new = new.evaluate(self)
-        
+
     if isinstance(new, (str, int, float, bool)):
       pass
     elif isinstance(new, cxx.postfix_expression_call):
-      if new.postfix_expression == 'defined':
-        name = new.expression_list
+      if isinstance(new.postfix_expression, str):
+        d = new.postfix_expression
+      else:
+        d = new.postfix_expression.content
+      if d == 'defined':
+        name = new.expression_list if isinstance(new.expression_list, str) else new.expression_list.content
         if isinstance(name, str):
           return name in self.defines
-
-    elif isinstance(new, if_section):
-      if new.if_group.is_valid:
-        return new._replace(elif_groups=None, else_group=None)
-      if new.if_group.is_invalid:
-        if new.elif_groups.is_valid:
-          return new._replace(if_group=None, else_group=None)
-        if new.elif_groups.is_invalid:
-          return new._replace(if_group=None, elif_groups=None)
-    elif isinstance(new, (if_group, elif_group)):
-      if new.is_invalid:
-          return new._replace(group=None)
-    elif isinstance(new, elif_groups):
-      new_content = []
-      for g in new.content:
-        if g.is_valid:
-          return new._replace(content=(g,))
-        if g.is_invalid:
-          continue
-        new_content.append(g)
-      return new._replace(content=tuple(new_content))
+      print(f'failed to evaluate `{new}`: unknown symbol `{d}`')
     else:
       pass
       # print(type(new))
     return new
+
+
+  def splitter_postprocess_rest(self, attrs, item, rest):
+    if item is None:
+      self.smallest_non_matching_rest_length = min(self.smallest_non_matching_rest_length, len(rest))
+    else:
+      self.smallest_matching_rest_length = min(self.smallest_matching_rest_length, len(rest))
+    return super().splitter_postprocess_rest(attrs, item, rest)
+
 
 def preprocess(text):
   """Return a tree of CPP procession result.
@@ -1182,10 +1540,36 @@ def preprocess(text):
   text = utils.remove_backslashes(text)  # Stage 2
   text, ctext = utils.reference_comments(text)  # Stage 3, with comment reference hooks
 
-  ctx = CPPContext()
+  ctx = CPPContext(trace=not True)
 
   with ctx.uses_language('cpp'):
     r, rest = preprocessing_file.split(ctx, text)
-    assert rest == '', rest
 
-  return r.rewrite(ctx)
+
+  if rest != '':
+    print(text)
+    print(f'{ctx.smallest_non_matching_rest_length=}')
+    print(f'{ctx.smallest_matching_rest_length=}')
+    i = len(text) - ctx.smallest_matching_rest_length
+    last_matching_line = text[:i]
+    k = last_matching_line.rindex('\n') + 1
+    last_matching_line = last_matching_line[k:]
+    next_non_matching_line = text[i:].lstrip()
+    k = next_non_matching_line.find('\n')
+    if k == -1:
+      k = len(next_non_matching_line)
+    next_non_matching_line = next_non_matching_line[:k]
+    print(f'{last_matching_line=}')
+    print(f'{next_non_matching_line=}')
+
+    print('FAILED TO CPP PARSE')
+    return
+
+  r = r.rewrite(ctx)
+  r._ctx = ctx
+
+  if ctx.unevaluated_macros:
+    print('CPP preprocessor discover the following undefined CPP macros:')
+    print('  ', ', '.join(ctx.unevaluated_macros))
+
+  return r

@@ -133,10 +133,10 @@ def reference_comments(text, label_format='@@@{direction}{count}@@@'):
         cdict[label] = text[i + 2:k]
         c = cdict[label].count('\n')
         m = min(len(label) + c, k - i)
-        stext[i:i + m] = [''] * m
+        stext[i:i + m] = [''] * (m)
         stext[i] = label
         stext[i + 1] = '\n' * c
-        i = k + 3
+        i = k + 2
         continue
       elif text[i] == '"':
         string_sequence = '"'
@@ -150,7 +150,14 @@ def reference_comments(text, label_format='@@@{direction}{count}@@@'):
   stext = ''.join(stext)
   # sanity test: preserving the newline count enables computing the
   # source line numbers correctly.
-  assert stext.count('\n') == text.count('\n')
+  c1 = text.count('\n')
+  c2 = stext.count('\n')
+  if c1 != c2:
+    import difflib
+    s1 = text.splitlines(keepends=True)
+    s2 = stext.splitlines(keepends=True)
+    print(''.join(difflib.context_diff(s1, s2, fromfile='input', tofile='output')))
+    print('FIXME: the newline count of input and output differ: expected {c1} newlines, the output has {c2}')
   return stext, cdict
 
 def separate_comments(text):

@@ -618,7 +618,9 @@ class c_char_sequence(item_sequence('c_char_sequence', c_char)):
   whitespace_characters = ''
   @classmethod
   def postprocess(cls, ctx, item, rest):
-    return cls(''.join(item.content)), rest
+    if item is not None:
+      return cls(''.join(item.content)), rest
+    return item, rest
 
 class s_char_sequence(item_sequence('s_char_sequence', s_char)):
   """
@@ -628,7 +630,9 @@ class s_char_sequence(item_sequence('s_char_sequence', s_char)):
   whitespace_characters = ''
   @classmethod
   def postprocess(cls, ctx, item, rest):
-    return cls(''.join(item.content)), rest
+    if item is not None:
+      return cls(''.join(item.content)), rest
+    return item, rest
 
 class character_literal(grammar('character_literal', ['encoding_prefix', 'c_char_sequence'])):
   """
