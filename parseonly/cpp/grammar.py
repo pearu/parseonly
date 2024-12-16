@@ -316,6 +316,9 @@ class sharp_define_macro(grammar('sharp_define_macro', ['identifier', 'identifie
 # define  identifier lparen identifier-list?      ) replacement-list new-line
 # define  identifier lparen                   ... ) replacement-list new-line
 # define  identifier lparen identifier-list , ... ) replacement-list new-line
+
+GCC extension:
+# define  identifier lparen identifier... ) replacement-list new-line
   """
   @property
   def format(self):
@@ -356,6 +359,24 @@ class sharp_define_macro(grammar('sharp_define_macro', ['identifier', 'identifie
               dots, rest = tripledot.split(ctx, rest[1:])
               if not dots:
                 return
+            else:
+              # GCC extension, rewrite to comply standard
+              dots, rest = tripledot.split(ctx, rest)
+              if dots and rest.startswith(')'):
+                std_va_arg = pp_identifier('__VA_ARGS__')
+                if isinstance(args, pp_identifier):
+                  va_arg = args
+                  args = None
+                else:
+                  assert isinstance(args, pp_identifier_list)
+                  va_arg = args[0][-1]
+                  args = args._replace(content=args[0][:-1])
+                lst, rest = replacement_list.split(ctx, rest[1:])
+                print(f'{lst.pp_tokens.pp_tokens=}')
+                if lst and rest.startswith('\n'):
+                  lst = lst._replace(pp_tokens=pp_tokens(tuple((std_va_arg if t == va_arg else t) for t in lst.pp_tokens.pp_tokens)))
+                  print(f'{lst.pp_tokens.pp_tokens=}')
+                  return cls(i.content, args, dots, lst), rest[1:]
             if rest.startswith(')'):
               lst, rest = replacement_list.split(ctx, rest[1:])
               if lst and rest.startswith('\n'):
@@ -995,7 +1016,6 @@ class sharp_conditionally_supported_directive(grammar('sharp_conditionally_suppo
         return text_line('')
     return self
 
-
 class text_line(grammar('text_line', ['pp_tokens'])):
   """
 pp-tokens? new-line
@@ -1039,7 +1059,39 @@ pp-tokens? new-line
   def is_invalid(self):
     return False
 
-class group_part(switch('group_part', control_line, if_section, sharp_conditionally_supported_directive, text_line)):
+class text_lines(item_sequence('text_lines', text_line, join_separator='')):
+  """
+  text-line
+  text-lines text-line
+
+  Collects multiple text-lines together so that CPP macros can be
+  applied to constructs that consume multiple lines.
+  """
+
+  def evaluate(self, ctx):
+    content = ctx.apply_defines(pp_tokens(sum(self[0], ())))
+    for t in content.pp_tokens:
+      if isinstance(t, pp_identifier):
+        n = t.content
+        if n == n.upper():
+          ctx.unevaluated_macros.add(n)
+    return text_line(content)
+
+  def resolve(self, enable):
+    if isinstance(enable, (int, float)):
+      if not enable:
+        return text_line('')
+    return self
+
+  @property
+  def is_valid(self):
+    return True
+  @property
+  def is_invalid(self):
+    return False
+
+
+class group_part(switch('group_part', control_line, if_section, sharp_conditionally_supported_directive, text_lines)):
   """
   control-line
   if-section
@@ -1500,7 +1552,7 @@ class CPPContext(Context):
         # print(f'{original=} -> {new=}')
 
     if isinstance(new, (sharp_define_identifier, sharp_define_macro, sharp_undef,
-                        text_line,
+                        text_line, text_lines,
                         sharp_include,
                         if_group, elif_group,
                         if_section)):
